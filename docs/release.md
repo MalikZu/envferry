@@ -1,24 +1,29 @@
 # Release guide
 
-`envferry` publishes from GitHub Actions using **npm trusted publishing (OIDC)**,
-so no long-lived npm token is stored and provenance is generated automatically for
-the public package.
+`envferry` publishes from GitHub Actions using an npm token stored as the
+`NPM_ACCESS_TOKEN` repo secret. Provenance is attached automatically once the repo
+is public — the workflow enables `--provenance` only for a public repo, so a
+private-repo release still succeeds without it.
 
 ## One-time setup
 
-1. Create the public GitHub repo `MalikZu/envferry` and push.
-2. On npmjs.com, add a **trusted publisher** for the package pointing at this
-   repo's `.github/workflows/release.yml`. Optionally protect the `npm`
-   environment with required reviewers.
+1. Push the repo (`MalikZu/envferry`).
+2. Reserve the `envferry` name on npm, create an automation token with publish
+   rights, and store it as the `NPM_ACCESS_TOKEN` repo secret:
+   `gh secret set NPM_ACCESS_TOKEN`.
 3. For Homebrew, create a single generic tap repo `MalikZu/homebrew-tap` with a
    `Formula/` directory (it can hold formulae for several projects), and add a
    `HOMEBREW_TAP_TOKEN` secret to this repo (a fine-grained PAT with
    contents:write on the tap repo). The release workflow renders
    `packaging/homebrew/envferry.rb` into `Formula/envferry.rb` there, so users can
    `brew install MalikZu/tap/envferry`.
+4. Make the repo **public** before the release you want signed with provenance.
 
-Trusted publishing needs npm ≥ 11.5.1; the release workflow uses Node 24, which
-ships it.
+The release workflow uses Node 24.
+
+> Prefer no stored token? npm trusted publishing (OIDC) also works: configure a
+> trusted publisher for `.github/workflows/release.yml` on npmjs and swap the
+> publish step to rely on OIDC instead of `NODE_AUTH_TOKEN`.
 
 ## Each release
 
