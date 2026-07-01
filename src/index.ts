@@ -20,3 +20,7 @@ export type { TransferFile, TransferPayload } from "./transport/payload.js";
 export { acceptLocalTcp, isLocalCode, offerLocalTcp } from "./transport/local-tcp.js";
 export { acceptDirectTls, isDirectCode, offerDirectTls } from "./transport/direct-tls.js";
 export type { OfferDirectOptions } from "./transport/direct-tls.js";
+export { isRelayAddress, parseRelayAddress, startRelay } from "./transport/relay.js";
+export type { RelayAddress, RelayHandle, StartRelayOptions } from "./transport/relay.js";
+export { acceptViaRelay, isRelayCode, offerViaRelay } from "./transport/relay-tls.js";
+export type { OfferRelayOptions } from "./transport/relay-tls.js";
