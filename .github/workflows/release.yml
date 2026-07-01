@@ -38,6 +38,10 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
+      # Trusted publishing (OIDC) needs npm >= 11.5.1.
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
+
       - name: Verify tag matches package version
         run: |
           VERSION="$(node -p "require('./package.json').version")"
@@ -46,12 +50,11 @@ jobs:
       - run: npm ci
       - run: npm run check
 
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
+      - name: Publish to npm (OIDC trusted publishing)
         run: |
-          # Provenance requires a public repo, so enable it only when the repo is
-          # public; a private-repo release still publishes (without provenance).
+          # Auth comes from OIDC via the trusted publisher configured on npmjs —
+          # no NODE_AUTH_TOKEN. Provenance requires a public repo, so enable it
+          # only when the repo is public.
           PROV=""
           if [ "$(gh repo view --json isPrivate -q .isPrivate)" = "false" ]; then
             PROV="--provenance"
