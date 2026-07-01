@@ -1,0 +1,62 @@
+name: Release
+
+# Publishes on a version tag (or manual dispatch with a tag). Uses npm trusted
+# publishing (OIDC) — no long-lived npm token is stored, and provenance is
+# generated automatically for the public package.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish, matching package.json version (e.g. v0.1.0)"
+        required: true
+
+# A release publishes; never cancel one mid-flight.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create the GitHub release
+  id-token: write # OIDC for npm trusted publishing + provenance
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 ships an npm new enough for trusted publishing (>= 11.5.1).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Verify tag matches package version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          test "v${VERSION}" = "$TAG" || { echo "tag $TAG != v$VERSION"; exit 1; }
+
+      - run: npm ci
+      - run: npm run check
+
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub release
+        run: |
+          # Hyphenated SemVer tags (e.g. v0.1.0-rc.1) publish as GitHub
+          # pre-releases so they're flagged and excluded from "Latest release".
+          PRERELEASE=""
+          case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" \
+            --title "envferry ${TAG}" \
+            --generate-notes \
+            $PRERELEASE
