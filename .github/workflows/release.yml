@@ -50,8 +50,16 @@ jobs:
       - run: npm ci
       - run: npm run check
 
+      # Each step below is idempotent so a partially-failed run can simply be
+      # re-run: publish skips if the version already exists, and the release is
+      # only created if missing.
       - name: Publish to npm (OIDC trusted publishing)
         run: |
+          VERSION="${TAG#v}"
+          if npm view "envferry@${VERSION}" version >/dev/null 2>&1; then
+            echo "envferry@${VERSION} already on npm — skipping publish"
+            exit 0
+          fi
           # Auth comes from OIDC via the trusted publisher configured on npmjs —
           # no NODE_AUTH_TOKEN. Provenance requires a public repo, so enable it
           # only when the repo is public.
@@ -65,6 +73,10 @@ jobs:
 
       - name: Create GitHub release
         run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — skipping"
+            exit 0
+          fi
           # Hyphenated SemVer tags (e.g. v0.1.0-rc.1) publish as GitHub
           # pre-releases so they're flagged and excluded from "Latest release".
           PRERELEASE=""
@@ -106,5 +118,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/envferry.rb
-          git commit -m "envferry ${VERSION}"
-          git push
+          # No-op when the formula already matches this version (re-run safety).
+          if git diff --cached --quiet; then
+            echo "formula already at ${VERSION} — nothing to push"
+          else
+            git commit -m "envferry ${VERSION}"
+            git push
+          fi
