@@ -20,7 +20,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "build": "tsc -p tsconfig.build.json",
     "pretest": "npm run build",
-    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "test": "node --import tsx --test test/*.test.ts",
     "smoke": "node dist/bin/envferry.js --help",
     "pack:check": "npm pack --dry-run",
     "check": "npm run typecheck && npm test && npm run smoke && npm run pack:check",
