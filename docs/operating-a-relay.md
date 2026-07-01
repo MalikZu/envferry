@@ -37,9 +37,10 @@ end-to-end encrypted, so you just expose a plain TCP port.
 # sender
 envferry send .env --relay your-relay.example:8787
 
-# or configure once, then omit the value:
-export ENVFERRY_RELAY=your-relay.example:8787
+# or set a persistent default (a DNS name or an IP), then omit the value:
+envferry config set relay your-relay.example:8787
 envferry send .env --relay
+# ENVFERRY_RELAY works too and takes precedence over the config file.
 ```
 
 The relay address is embedded in the `efr1_` code, so `get` needs no relay flag.

@@ -15,6 +15,8 @@ export {
 export type { ReceiveTargetOptions } from "./files/receive-target.js";
 export { receivePayload, sendPayload } from "./transport/session.js";
 export type { Transport } from "./transport/session.js";
+export { configPath, readConfig, writeConfig } from "./config.js";
+export type { EnvferryConfig } from "./config.js";
 export { validatePayload } from "./transport/payload.js";
 export type { TransferFile, TransferPayload } from "./transport/payload.js";
 export { acceptLocalTcp, isLocalCode, offerLocalTcp } from "./transport/local-tcp.js";

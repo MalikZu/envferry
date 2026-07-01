@@ -72,6 +72,13 @@ Whoever runs `send` is the one that must be reachable at `--host`. To push a fil
 *up* to a reachable server, run `send` on the server and `get` on your laptop; or
 use a relay. See [docs/operating-a-relay.md](docs/operating-a-relay.md) to run one.
 
+Set a relay once and drop the address from then on (accepts a DNS name or an IP):
+
+```sh
+envferry config set relay relay.example.com:8787
+envferry send .env --relay        # uses the configured relay
+```
+
 ```sh
 # receive it (any code type)
 envferry get <code>

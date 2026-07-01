@@ -4,8 +4,9 @@ import { mergeEnv } from "./env/merge.js";
 import { normalizeReceivedFileName, resolveReceiveTarget } from "./files/receive-target.js";
 import { acceptLocalTcp, offerLocalTcp } from "./transport/local-tcp.js";
 import { acceptDirectTls, isDirectCode, offerDirectTls } from "./transport/direct-tls.js";
-import { startRelay } from "./transport/relay.js";
+import { isRelayAddress, startRelay } from "./transport/relay.js";
 import { acceptViaRelay, isRelayCode, offerViaRelay } from "./transport/relay-tls.js";
+import { configPath, readConfig, writeConfig } from "./config.js";
 import type { TransferPayload } from "./transport/payload.js";
 
 const HELP = `envferry
@@ -19,6 +20,7 @@ Usage:
   envferry relay [--host <address>] [--port <port>]
                  [--max-connections <n>] [--max-per-ip <n>]
                  [--pair-timeout <seconds>] [--header-timeout <seconds>]
+  envferry config <get|set|unset|path> [relay] [<host:port>]
   envferry merge-preview <existing> <incoming>
 
 Transports (get auto-detects which one from the code):
@@ -28,10 +30,11 @@ Transports (get auto-detects which one from the code):
   --relay   TLS-PSK through a blind relay for peers that can't reach each other
             (both behind NAT). Both dial out to the relay; it forwards ciphertext
             only and holds no key (code: efr1_...). With no value, --relay uses
-            the ENVFERRY_RELAY environment variable. Bracket IPv6: [2001:db8::1]:8787.
+            ENVFERRY_RELAY or the address from 'envferry config set relay ...'.
+            The address is host:port; bracket IPv6, e.g. [2001:db8::1]:8787.
 
-Run your own relay with 'envferry relay --port <port>' on a box both peers can
-reach (e.g. your static-IP server). See docs/operating-a-relay.md.
+Set a default relay once: 'envferry config set relay relay.example.com:8787'.
+Run your own with 'envferry relay --port <port>'. See docs/operating-a-relay.md.
 `;
 
 interface ParsedArgs {
@@ -84,6 +87,8 @@ export async function run(argv: string[]): Promise<number> {
       return runGet(rest);
     case "relay":
       return runRelay(rest);
+    case "config":
+      return runConfig(rest);
     default:
       process.stderr.write(`Unknown command: ${command}\n\n${HELP}`);
       return 2;
@@ -131,11 +136,14 @@ async function runSend(args: string[]): Promise<number> {
   };
 
   if (flags.relay) {
-    // --relay with no value falls back to ENVFERRY_RELAY, so the address can be
-    // configured once instead of hardcoded.
-    const relay = flags.relay === true ? process.env["ENVFERRY_RELAY"] : String(flags.relay);
+    // --relay with no value falls back to a configured default, so the address
+    // can be set once instead of passed every time.
+    const relay = flags.relay === true ? defaultRelay() : String(flags.relay);
     if (!relay) {
-      process.stderr.write("--relay needs an address, or set ENVFERRY_RELAY\n");
+      process.stderr.write(
+        "--relay needs an address. Set one with `envferry config set relay <host:port>`,\n" +
+          "export ENVFERRY_RELAY, or pass --relay <host:port>.\n"
+      );
       return 2;
     }
     await offerViaRelay(payload, {
@@ -200,6 +208,72 @@ async function runRelay(args: string[]): Promise<number> {
     // Run until the process is signalled.
   });
   return 0;
+}
+
+async function runConfig(args: string[]): Promise<number> {
+  const [action, key, value] = args;
+
+  switch (action) {
+    case "path":
+      process.stdout.write(configPath() + "\n");
+      return 0;
+
+    case "get": {
+      const config = readConfig();
+      if (key === undefined) {
+        process.stdout.write(JSON.stringify(config, null, 2) + "\n");
+        return 0;
+      }
+      if (key !== "relay") {
+        process.stderr.write(`Unknown config key: ${key}\n`);
+        return 2;
+      }
+      process.stdout.write((config.relay ?? "") + "\n");
+      return 0;
+    }
+
+    case "set": {
+      if (key !== "relay" || value === undefined) {
+        process.stderr.write("Usage: envferry config set relay <host:port>\n");
+        return 2;
+      }
+      // Accepts a DNS name or an IP, with a port; IPv6 must be bracketed.
+      if (!isRelayAddress(value)) {
+        process.stderr.write(`Invalid relay address: ${value} (expected host:port; bracket IPv6)\n`);
+        return 2;
+      }
+      const config = readConfig();
+      config.relay = value;
+      writeConfig(config);
+      process.stdout.write(`saved relay = ${value}\n`);
+      return 0;
+    }
+
+    case "unset": {
+      if (key !== "relay") {
+        process.stderr.write("Usage: envferry config unset relay\n");
+        return 2;
+      }
+      const config = readConfig();
+      delete config.relay;
+      writeConfig(config);
+      process.stdout.write("removed relay\n");
+      return 0;
+    }
+
+    default:
+      process.stderr.write("Usage: envferry config <get|set|unset|path> [relay] [<host:port>]\n");
+      return 2;
+  }
+}
+
+/** Resolve the default relay address: ENVFERRY_RELAY first, then the config file. */
+function defaultRelay(): string | undefined {
+  const env = process.env["ENVFERRY_RELAY"];
+  if (env !== undefined && env.length > 0) {
+    return env;
+  }
+  return readConfig().relay;
 }
 
 /** Write each received file into the cwd, refusing to overwrite (flag: "wx"). */

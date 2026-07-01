@@ -136,6 +136,59 @@ describe("envferry CLI", () => {
     }
   });
 
+  it("sends via a relay from a config-file default", { timeout: 20000 }, async () => {
+    if (!(await canOpenLocalListener())) {
+      return;
+    }
+
+    const relay = await startRelay({ host: "127.0.0.1", port: 0 });
+    const cfgDir = await mkdtemp(join(tmpdir(), "envferry-cfgdefault-"));
+    try {
+      // Set the default relay in the config file, with no ENVFERRY_RELAY in env,
+      // so the transfer must resolve the address from config.
+      const env: NodeJS.ProcessEnv = { ...process.env, XDG_CONFIG_HOME: cfgDir };
+      delete env["ENVFERRY_RELAY"];
+      const setResult = spawnSync(
+        process.execPath,
+        [...RUNNER, "config", "set", "relay", `127.0.0.1:${relay.port}`],
+        { encoding: "utf8", env }
+      );
+      assert.equal(setResult.status, 0, setResult.stderr);
+
+      const root = await mkdtemp(join(tmpdir(), "envferry-cfgsend-"));
+      const senderDir = join(root, "sender");
+      const receiverDir = join(root, "receiver");
+      await mkdir(senderDir);
+      await mkdir(receiverDir);
+      await writeFile(join(senderDir, ".env"), "API_KEY=super-secret\n");
+
+      const sender = spawn(process.execPath, [...RUNNER, "send", ".env", "--relay"], {
+        cwd: senderDir,
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+      });
+      const senderExit = waitForExit(sender);
+      const senderOutput = collectOutput(sender);
+      const code = await waitForStdout(sender, senderOutput, /code: (efr1_[A-Za-z0-9_-]+)/);
+
+      const receiver = spawn(process.execPath, [...RUNNER, "get", code], {
+        cwd: receiverDir,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const receiverExit = waitForExit(receiver);
+      const receiverOutput = collectOutput(receiver);
+
+      const rexit = await receiverExit;
+      assert.equal(rexit.status, 0, receiverOutput.stderr);
+      const sexit = await senderExit;
+      assert.equal(sexit.status, 0, senderOutput.stderr);
+
+      assert.equal(await readFile(join(receiverDir, ".env"), "utf8"), "API_KEY=super-secret\n");
+    } finally {
+      await relay.close();
+    }
+  });
+
   it("previews env merges without printing secret values", async () => {
     const root = await mkdtemp(join(tmpdir(), "envferry-cli-"));
     const existingDir = join(root, "existing");
