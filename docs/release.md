@@ -10,10 +10,12 @@ the public package.
 2. On npmjs.com, add a **trusted publisher** for the package pointing at this
    repo's `.github/workflows/release.yml`. Optionally protect the `npm`
    environment with required reviewers.
-3. For Homebrew, create the tap repo `MalikZu/homebrew-envferry` with a `Formula/`
-   directory, and add a `HOMEBREW_TAP_TOKEN` secret (a fine-grained PAT with
-   contents:write on the tap repo). The release workflow bumps the formula there
-   from `packaging/homebrew/envferry.rb`.
+3. For Homebrew, create a single generic tap repo `MalikZu/homebrew-tap` with a
+   `Formula/` directory (it can hold formulae for several projects), and add a
+   `HOMEBREW_TAP_TOKEN` secret to this repo (a fine-grained PAT with
+   contents:write on the tap repo). The release workflow renders
+   `packaging/homebrew/envferry.rb` into `Formula/envferry.rb` there, so users can
+   `brew install MalikZu/tap/envferry`.
 
 Trusted publishing needs npm ≥ 11.5.1; the release workflow uses Node 24, which
 ships it.

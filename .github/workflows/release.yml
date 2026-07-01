@@ -86,7 +86,7 @@ jobs:
           sed -e "s|__URL__|${URL}|" -e "s|__SHA__|${SHA}|" \
             packaging/homebrew/envferry.rb > formula.rb
 
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/MalikZu/homebrew-envferry.git" tap
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/MalikZu/homebrew-tap.git" tap
           mkdir -p tap/Formula
           mv formula.rb tap/Formula/envferry.rb
           cd tap
