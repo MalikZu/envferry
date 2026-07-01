@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { mergeEnv } from "./env/merge.js";
 import { normalizeReceivedFileName, resolveReceiveTarget } from "./files/receive-target.js";
 import { acceptLocalTcp, offerLocalTcp } from "./transport/local-tcp.js";
+import { acceptDirectTls, isDirectCode, offerDirectTls } from "./transport/direct-tls.js";
 import type { TransferPayload } from "./transport/payload.js";
 
 const HELP = `envferry
@@ -10,14 +11,49 @@ const HELP = `envferry
 Move .env files between devices without pasting secrets into chat.
 
 Usage:
-  envferry send <file>
+  envferry send <file> [--host <reachable-host>] [--bind <address>] [--timeout <seconds>]
   envferry get <code>
   envferry merge-preview <existing> <incoming>
 
-Status:
-  send/get currently use a same-machine loopback spike (code: local-...).
-  Encrypted cross-device transports are the next milestone.
+Transports (get auto-detects which one from the code):
+  Default   same-machine loopback spike (code: local-...).
+  --host    direct TLS-PSK transport for hosts that can reach each other, e.g.
+            a server's static IP (code: ef1_...). Encrypted end-to-end, one-shot.
+            --host is the address the receiver dials; --bind is the local
+            interface to listen on (default 0.0.0.0).
 `;
+
+interface ParsedArgs {
+  flags: Record<string, string | boolean>;
+  positionals: string[];
+}
+
+/** A minimal flag parser: `--key value` or boolean `--key`, plus positionals. */
+function parseFlags(args: string[]): ParsedArgs {
+  const flags: Record<string, string | boolean> = {};
+  const positionals: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === undefined) {
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      const key = arg.slice(2);
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith("--")) {
+        flags[key] = true;
+      } else {
+        flags[key] = next;
+        i += 1;
+      }
+    } else {
+      positionals.push(arg);
+    }
+  }
+
+  return { flags, positionals };
+}
 
 /** Run the CLI. Returns a process exit code; never throws for expected errors. */
 export async function run(argv: string[]): Promise<number> {
@@ -66,22 +102,32 @@ async function runMergePreview(args: string[]): Promise<number> {
 }
 
 async function runSend(args: string[]): Promise<number> {
-  const [filePath] = args;
+  const { flags, positionals } = parseFlags(args);
+  const [filePath] = positionals;
   if (!filePath) {
-    process.stderr.write("Usage: envferry send <file>\n");
+    process.stderr.write("Usage: envferry send <file> [--host <reachable-host>]\n");
     return 2;
   }
 
   const name = normalizeReceivedFileName(basename(filePath));
   const contents = await readFile(filePath, "utf8");
   const payload: TransferPayload = { files: [{ name, contents }] };
+  const onCode = (code: string): void => {
+    process.stdout.write(`code: ${code}\n`);
+    process.stdout.write("waiting for receiver...\n");
+  };
 
-  await offerLocalTcp(payload, {
-    onCode(code) {
-      process.stdout.write(`code: ${code}\n`);
-      process.stdout.write("waiting for receiver...\n");
-    },
-  });
+  if (flags.host) {
+    await offerDirectTls(payload, {
+      advertiseHost: String(flags.host),
+      bindHost: typeof flags.bind === "string" ? flags.bind : "0.0.0.0",
+      timeoutMs: flags.timeout ? Number(flags.timeout) * 1000 : undefined,
+      onCode,
+    });
+  } else {
+    await offerLocalTcp(payload, { onCode });
+  }
+
   process.stdout.write("sent: 1 file\n");
   return 0;
 }
@@ -93,7 +139,7 @@ async function runGet(args: string[]): Promise<number> {
     return 2;
   }
 
-  const payload = await acceptLocalTcp(code);
+  const payload = isDirectCode(code) ? await acceptDirectTls(code) : await acceptLocalTcp(code);
   await writeReceivedFiles(payload);
   return 0;
 }

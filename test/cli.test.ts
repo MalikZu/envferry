@@ -54,6 +54,40 @@ describe("envferry CLI", () => {
     assert.doesNotMatch(senderOutput.stdout + receiver.stdout, /super-secret/);
   });
 
+  it("sends and receives over the direct TLS transport with --host", async () => {
+    if (!(await canOpenLocalListener())) {
+      return;
+    }
+
+    const root = await mkdtemp(join(tmpdir(), "envferry-direct-"));
+    const senderDir = join(root, "sender");
+    const receiverDir = join(root, "receiver");
+    await mkdir(senderDir);
+    await mkdir(receiverDir);
+    await writeFile(join(senderDir, ".env"), "API_KEY=super-secret\n");
+
+    const sender = spawn(
+      process.execPath,
+      [...RUNNER, "send", ".env", "--host", "127.0.0.1", "--bind", "127.0.0.1"],
+      { cwd: senderDir, stdio: ["ignore", "pipe", "pipe"] }
+    );
+    const senderExit = waitForExit(sender);
+    const senderOutput = collectOutput(sender);
+    const code = await waitForStdout(sender, senderOutput, /code: (ef1_[A-Za-z0-9_-]+)/);
+
+    const receiver = spawnSync(process.execPath, [...RUNNER, "get", code], {
+      cwd: receiverDir,
+      encoding: "utf8",
+    });
+    assert.equal(receiver.status, 0, receiver.stderr);
+
+    const exit = await senderExit;
+    assert.equal(exit.status, 0, senderOutput.stderr);
+    assert.equal(await readFile(join(receiverDir, ".env"), "utf8"), "API_KEY=super-secret\n");
+    assert.match(receiver.stdout, /wrote: \.env/);
+    assert.doesNotMatch(senderOutput.stdout + receiver.stdout, /super-secret/);
+  });
+
   it("previews env merges without printing secret values", async () => {
     const root = await mkdtemp(join(tmpdir(), "envferry-cli-"));
     const existingDir = join(root, "existing");
