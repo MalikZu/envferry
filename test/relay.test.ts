@@ -14,8 +14,9 @@ import {
 import type { TransferPayload } from "../src/index.js";
 
 describe("blind relay transport", () => {
-  it("round-trips a payload through the relay", async () => {
+  it("round-trips a payload through the relay", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -37,8 +38,9 @@ describe("blind relay transport", () => {
     }
   });
 
-  it("forwards bytes opaquely without interpreting them", async () => {
+  it("forwards bytes opaquely without interpreting them", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -65,8 +67,9 @@ describe("blind relay transport", () => {
     }
   });
 
-  it("rejects a wrong code and fails the offer", async () => {
+  it("rejects a wrong code and fails the offer", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -89,8 +92,9 @@ describe("blind relay transport", () => {
     }
   });
 
-  it("does not pair a rendezvous id twice (single-use)", async () => {
+  it("does not pair a rendezvous id twice (single-use)", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -115,6 +119,46 @@ describe("blind relay transport", () => {
         rejectAfter(3000, "relay did not drop a reused rendezvous id"),
       ]);
 
+      a.destroy();
+      b.destroy();
+    } finally {
+      await relay.close();
+    }
+  });
+
+  it("tears down a paired session that exceeds the byte cap", async (t) => {
+    if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
+      return;
+    }
+
+    const relay = await startRelay({ host: "127.0.0.1", port: 0, maxSessionBytes: 64 });
+    try {
+      const id = "cafebabecafebabe";
+      const a = connect(relay.port, "127.0.0.1");
+      const b = connect(relay.port, "127.0.0.1");
+      await Promise.all([once(a, "connect"), once(b, "connect")]);
+
+      a.write(Buffer.from(id + "\n"));
+      b.write(Buffer.from(id + "\n"));
+
+      // Pump well past the 64-byte session cap; the relay must cut the pipe
+      // instead of forwarding indefinitely.
+      const closed = Promise.race([
+        Promise.all([once(a, "close"), once(b, "close")]),
+        rejectAfter(5000, "relay did not enforce the session byte cap"),
+      ]);
+      const noise = Buffer.alloc(1024, 7);
+      const pump = setInterval(() => {
+        if (!a.destroyed) {
+          a.write(noise);
+        }
+      }, 20);
+      try {
+        await closed;
+      } finally {
+        clearInterval(pump);
+      }
       a.destroy();
       b.destroy();
     } finally {

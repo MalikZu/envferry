@@ -5,8 +5,9 @@ import { acceptDirectTls, isDirectCode, offerDirectTls } from "../src/index.js";
 import type { TransferPayload } from "../src/index.js";
 
 describe("direct TLS-PSK transport", () => {
-  it("round-trips a payload over an encrypted channel", async () => {
+  it("round-trips a payload over an encrypted channel", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -21,8 +22,9 @@ describe("direct TLS-PSK transport", () => {
     await done;
   });
 
-  it("rejects a wrong code without burning the pending transfer", async () => {
+  it("rejects a wrong code without burning the pending transfer", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -38,8 +40,9 @@ describe("direct TLS-PSK transport", () => {
     await done;
   });
 
-  it("is single-use once a receiver completes the transfer", async () => {
+  it("is single-use once a receiver completes the transfer", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
