@@ -21,9 +21,10 @@ interface Output {
 }
 
 describe("envferry CLI", () => {
-  it("sends .env and receives it with the local spike transport", async () => {
+  it("sends .env and receives it with the local spike transport", async (t) => {
     if (!(await canOpenLocalListener())) {
-      return; // local listeners blocked in this sandbox
+      t.skip("local listeners are blocked in this sandbox");
+      return;
     }
 
     const root = await mkdtemp(join(tmpdir(), "envferry-send-"));
@@ -55,8 +56,9 @@ describe("envferry CLI", () => {
     assert.doesNotMatch(senderOutput.stdout + receiver.stdout, /super-secret/);
   });
 
-  it("sends and receives over the direct TLS transport with --host", async () => {
+  it("sends and receives over the direct TLS transport with --host", async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -89,8 +91,9 @@ describe("envferry CLI", () => {
     assert.doesNotMatch(senderOutput.stdout + receiver.stdout, /super-secret/);
   });
 
-  it("sends via a relay using the ENVFERRY_RELAY env var", { timeout: 20000 }, async () => {
+  it("sends via a relay using the ENVFERRY_RELAY env var", { timeout: 20000 }, async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -136,8 +139,9 @@ describe("envferry CLI", () => {
     }
   });
 
-  it("sends via a relay from a config-file default", { timeout: 20000 }, async () => {
+  it("sends via a relay from a config-file default", { timeout: 20000 }, async (t) => {
     if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
       return;
     }
 
@@ -187,6 +191,30 @@ describe("envferry CLI", () => {
     } finally {
       await relay.close();
     }
+  });
+
+  it("rejects malformed flag values as usage errors", async () => {
+    const root = await mkdtemp(join(tmpdir(), "envferry-flags-"));
+    await writeFile(join(root, ".env"), "A=1\n");
+    const run = (...args: string[]): { status: number | null; stderr: string } =>
+      spawnSync(process.execPath, [...RUNNER, ...args], { cwd: root, encoding: "utf8" });
+
+    // --host with no value must not become the literal host "true".
+    let result = run("send", ".env", "--host");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--host requires a value/);
+
+    result = run("send", ".env", "--host", "127.0.0.1", "--timeout", "abc");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--timeout must be a positive number of seconds/);
+
+    result = run("relay", "--port", "notaport");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--port must be a port/);
+
+    result = run("relay", "--max-per-ip", "-3");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--max-per-ip must be a positive integer/);
   });
 
   it("previews env merges without printing secret values", async () => {

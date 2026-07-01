@@ -7,6 +7,7 @@ import { acceptDirectTls, isDirectCode, offerDirectTls } from "./transport/direc
 import { isRelayAddress, startRelay } from "./transport/relay.js";
 import { acceptViaRelay, isRelayCode, offerViaRelay } from "./transport/relay-tls.js";
 import { configPath, readConfig, writeConfig } from "./config.js";
+import { validatePayload } from "./transport/payload.js";
 import type { TransferPayload } from "./transport/payload.js";
 
 const HELP = `envferry
@@ -40,6 +41,60 @@ Run your own with 'envferry relay --port <port>'. See docs/operating-a-relay.md.
 interface ParsedArgs {
   flags: Record<string, string | boolean>;
   positionals: string[];
+}
+
+/** A bad flag value — reported as a usage error (exit 2), not a crash. */
+class UsageError extends Error {}
+
+/** Value of a flag that requires an argument; `--flag` with no value is an error. */
+function stringFlag(flags: ParsedArgs["flags"], name: string): string | undefined {
+  const value = flags[name];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === true || value === "") {
+    throw new UsageError(`--${name} requires a value.`);
+  }
+  return String(value);
+}
+
+/** A strictly positive number of seconds, converted to milliseconds. */
+function secondsFlag(flags: ParsedArgs["flags"], name: string): number | undefined {
+  const raw = stringFlag(flags, name);
+  if (raw === undefined) {
+    return undefined;
+  }
+  const seconds = Number(raw);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new UsageError(`--${name} must be a positive number of seconds, got "${raw}".`);
+  }
+  return seconds * 1000;
+}
+
+/** A strictly positive integer (counts/caps). */
+function countFlag(flags: ParsedArgs["flags"], name: string): number | undefined {
+  const raw = stringFlag(flags, name);
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new UsageError(`--${name} must be a positive integer, got "${raw}".`);
+  }
+  return value;
+}
+
+/** A TCP port; 0 is allowed and means "pick a free port". */
+function portFlag(flags: ParsedArgs["flags"], name: string): number | undefined {
+  const raw = stringFlag(flags, name);
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0 || value > 65_535) {
+    throw new UsageError(`--${name} must be a port (0-65535), got "${raw}".`);
+  }
+  return value;
 }
 
 /** A minimal flag parser: `--key value` or boolean `--key`, plus positionals. */
@@ -78,20 +133,28 @@ export async function run(argv: string[]): Promise<number> {
     return 0;
   }
 
-  switch (command) {
-    case "merge-preview":
-      return runMergePreview(rest);
-    case "send":
-      return runSend(rest);
-    case "get":
-      return runGet(rest);
-    case "relay":
-      return runRelay(rest);
-    case "config":
-      return runConfig(rest);
-    default:
-      process.stderr.write(`Unknown command: ${command}\n\n${HELP}`);
+  try {
+    switch (command) {
+      case "merge-preview":
+        return await runMergePreview(rest);
+      case "send":
+        return await runSend(rest);
+      case "get":
+        return await runGet(rest);
+      case "relay":
+        return await runRelay(rest);
+      case "config":
+        return await runConfig(rest);
+      default:
+        process.stderr.write(`Unknown command: ${command}\n\n${HELP}`);
+        return 2;
+    }
+  } catch (error) {
+    if (error instanceof UsageError) {
+      process.stderr.write(`${error.message}\n`);
       return 2;
+    }
+    throw error;
   }
 }
 
@@ -130,15 +193,20 @@ async function runSend(args: string[]): Promise<number> {
   const name = normalizeReceivedFileName(basename(filePath));
   const contents = await readFile(filePath, "utf8");
   const payload: TransferPayload = { files: [{ name, contents }] };
+  // Enforce the wire limits before offering, so an oversized file fails here
+  // with a clear message instead of at the receiver.
+  validatePayload(payload);
   const onCode = (code: string): void => {
     process.stdout.write(`code: ${code}\n`);
     process.stdout.write("waiting for receiver...\n");
   };
 
+  const host = stringFlag(flags, "host");
+
   if (flags.relay) {
     // --relay with no value falls back to a configured default, so the address
     // can be set once instead of passed every time.
-    const relay = flags.relay === true ? defaultRelay() : String(flags.relay);
+    const relay = flags.relay === true ? defaultRelay() : stringFlag(flags, "relay");
     if (!relay) {
       process.stderr.write(
         "--relay needs an address. Set one with `envferry config set relay <host:port>`,\n" +
@@ -148,15 +216,14 @@ async function runSend(args: string[]): Promise<number> {
     }
     await offerViaRelay(payload, {
       relay,
-      advertiseRelay:
-        typeof flags["relay-advertise"] === "string" ? flags["relay-advertise"] : undefined,
+      advertiseRelay: stringFlag(flags, "relay-advertise"),
       onCode,
     });
-  } else if (flags.host) {
+  } else if (host !== undefined) {
     await offerDirectTls(payload, {
-      advertiseHost: String(flags.host),
-      bindHost: typeof flags.bind === "string" ? flags.bind : "0.0.0.0",
-      timeoutMs: flags.timeout ? Number(flags.timeout) * 1000 : undefined,
+      advertiseHost: host,
+      bindHost: stringFlag(flags, "bind") ?? "0.0.0.0",
+      timeoutMs: secondsFlag(flags, "timeout"),
       onCode,
     });
   } else {
@@ -188,18 +255,14 @@ async function runGet(args: string[]): Promise<number> {
 
 async function runRelay(args: string[]): Promise<number> {
   const { flags } = parseFlags(args);
-  const seconds = (value: string | boolean | undefined): number | undefined =>
-    typeof value === "string" ? Number(value) * 1000 : undefined;
-  const count = (value: string | boolean | undefined): number | undefined =>
-    typeof value === "string" ? Number(value) : undefined;
 
   const handle = await startRelay({
-    host: typeof flags.host === "string" ? flags.host : "0.0.0.0",
-    port: typeof flags.port === "string" ? Number(flags.port) : 0,
-    maxConnections: count(flags["max-connections"]),
-    maxPerIp: count(flags["max-per-ip"]),
-    pairTimeoutMs: seconds(flags["pair-timeout"]),
-    headerTimeoutMs: seconds(flags["header-timeout"]),
+    host: stringFlag(flags, "host") ?? "0.0.0.0",
+    port: portFlag(flags, "port") ?? 0,
+    maxConnections: countFlag(flags, "max-connections"),
+    maxPerIp: countFlag(flags, "max-per-ip"),
+    pairTimeoutMs: secondsFlag(flags, "pair-timeout"),
+    headerTimeoutMs: secondsFlag(flags, "header-timeout"),
   });
 
   process.stdout.write(`relay listening on ${handle.host}:${handle.port}\n`);
