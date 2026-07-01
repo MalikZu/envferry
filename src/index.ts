@@ -18,3 +18,5 @@ export type { Transport } from "./transport/session.js";
 export { validatePayload } from "./transport/payload.js";
 export type { TransferFile, TransferPayload } from "./transport/payload.js";
 export { acceptLocalTcp, isLocalCode, offerLocalTcp } from "./transport/local-tcp.js";
+export { acceptDirectTls, isDirectCode, offerDirectTls } from "./transport/direct-tls.js";
+export type { OfferDirectOptions } from "./transport/direct-tls.js";
