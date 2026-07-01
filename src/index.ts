@@ -13,3 +13,7 @@ export {
   resolveReceiveTarget,
 } from "./files/receive-target.js";
 export type { ReceiveTargetOptions } from "./files/receive-target.js";
+export { receivePayload, sendPayload } from "./transport/session.js";
+export type { Transport } from "./transport/session.js";
+export { validatePayload } from "./transport/payload.js";
+export type { TransferFile, TransferPayload } from "./transport/payload.js";
