@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+
+    // Strictness — this tool handles secrets, so we want the compiler to catch
+    // as much as it can. noUncheckedIndexedAccess in particular forces us to
+    // treat array/record lookups as possibly-undefined.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+
+    // Keep emit predictable and ESM-clean.
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    // This config is for type-checking (src + tests) and editor tooling only;
+    // emitting is done by tsconfig.build.json.
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}

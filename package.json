@@ -1,0 +1,58 @@
+{
+  "name": "envferry",
+  "version": "0.0.0",
+  "description": "Move .env files between devices without pasting secrets into chat.",
+  "type": "module",
+  "bin": {
+    "envferry": "dist/bin/envferry.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "smoke": "node dist/bin/envferry.js --help",
+    "pack:check": "npm pack --dry-run",
+    "check": "npm run typecheck && npm run build && npm test && npm run smoke && npm run pack:check",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "env",
+    "dotenv",
+    "secrets",
+    "p2p",
+    "cli",
+    "tls"
+  ],
+  "author": "Malik AlZubaidi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MalikZu/envferry.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MalikZu/envferry/issues"
+  },
+  "homepage": "https://github.com/MalikZu/envferry#readme",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

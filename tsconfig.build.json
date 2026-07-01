@@ -1,0 +1,14 @@
+{
+  // Build config: compile the library + CLI in src/ to dist/. Tests are excluded
+  // so they never ship in the published package.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

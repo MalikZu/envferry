@@ -1,0 +1,14 @@
+node_modules/
+coverage/
+dist/
+*.tgz
+
+.DS_Store
+
+# Real env files must never be committed; the tool exists precisely to move them.
+.env
+.env.*
+!.env.example
+
+# Local planning / handoff notes — kept out of the public repo.
+HANDOFF.md
