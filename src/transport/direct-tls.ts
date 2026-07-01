@@ -2,7 +2,7 @@ import { connect, createServer } from "node:tls";
 import type { TlsOptions } from "node:tls";
 import { randomBytes } from "node:crypto";
 import { CIPHERS, IDENTITY } from "./psk.js";
-import { validatePayload } from "./payload.js";
+import { MAX_MESSAGE_BYTES, validatePayload } from "./payload.js";
 import type { TransferPayload } from "./payload.js";
 
 // Direct, encrypted transport for hosts that can reach each other directly (e.g.
@@ -135,6 +135,11 @@ export async function acceptDirectTls(code: string): Promise<TransferPayload> {
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
       response += chunk;
+      // Abort rather than buffer an oversized (hostile) stream.
+      if (response.length > MAX_MESSAGE_BYTES) {
+        socket.destroy();
+        reject(new Error("Transfer message exceeds the size limit."));
+      }
     });
     socket.on("error", reject);
     socket.on("end", () => {

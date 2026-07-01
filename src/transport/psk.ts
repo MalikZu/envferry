@@ -1,7 +1,7 @@
 import { TLSSocket, connect } from "node:tls";
 import type { TLSSocketOptions } from "node:tls";
 import type { Socket } from "node:net";
-import { validatePayload } from "./payload.js";
+import { MAX_MESSAGE_BYTES, validatePayload } from "./payload.js";
 import type { TransferPayload } from "./payload.js";
 
 // Shared TLS-PSK configuration and helpers for the encrypted transports. Node's
@@ -64,6 +64,12 @@ export function receivePayloadOverSocket(rawSocket: Socket, psk: Buffer): Promis
     secured.setEncoding("utf8");
     secured.on("data", (chunk: string) => {
       response += chunk;
+      // Bound how much we buffer from the peer — a well-behaved sender stays
+      // far below this, so an oversized stream is hostile: abort the read.
+      if (response.length > MAX_MESSAGE_BYTES) {
+        secured.destroy();
+        reject(new Error("Transfer message exceeds the size limit."));
+      }
     });
     secured.on("error", reject);
     secured.on("end", () => {

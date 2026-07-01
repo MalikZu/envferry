@@ -1,6 +1,6 @@
 import { createConnection, createServer } from "node:net";
 import { randomBytes } from "node:crypto";
-import { validatePayload } from "./payload.js";
+import { MAX_MESSAGE_BYTES, validatePayload } from "./payload.js";
 import type { TransferPayload } from "./payload.js";
 
 // A same-machine transport spike. It binds a loopback listener, prints a code
@@ -34,6 +34,10 @@ export function offerLocalTcp(payload: TransferPayload, options: OfferLocalOptio
       socket.on("data", (chunk: string) => {
         request += chunk;
         if (!request.includes("\n")) {
+          // The token line is ~33 bytes; anything unbounded is hostile.
+          if (request.length > 4096) {
+            socket.destroy();
+          }
           return;
         }
 
@@ -91,6 +95,10 @@ export function acceptLocalTcp(code: string): Promise<TransferPayload> {
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
       response += chunk;
+      if (response.length > MAX_MESSAGE_BYTES) {
+        socket.destroy();
+        reject(new Error("Transfer message exceeds the size limit."));
+      }
     });
     socket.on("error", reject);
     socket.on("end", () => {
