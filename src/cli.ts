@@ -4,6 +4,8 @@ import { mergeEnv } from "./env/merge.js";
 import { normalizeReceivedFileName, resolveReceiveTarget } from "./files/receive-target.js";
 import { acceptLocalTcp, offerLocalTcp } from "./transport/local-tcp.js";
 import { acceptDirectTls, isDirectCode, offerDirectTls } from "./transport/direct-tls.js";
+import { startRelay } from "./transport/relay.js";
+import { acceptViaRelay, isRelayCode, offerViaRelay } from "./transport/relay-tls.js";
 import type { TransferPayload } from "./transport/payload.js";
 
 const HELP = `envferry
@@ -12,15 +14,24 @@ Move .env files between devices without pasting secrets into chat.
 
 Usage:
   envferry send <file> [--host <reachable-host>] [--bind <address>] [--timeout <seconds>]
+  envferry send <file> --relay [<host:port>] [--relay-advertise <host:port>]
   envferry get <code>
+  envferry relay [--host <address>] [--port <port>]
+                 [--max-connections <n>] [--max-per-ip <n>]
+                 [--pair-timeout <seconds>] [--header-timeout <seconds>]
   envferry merge-preview <existing> <incoming>
 
 Transports (get auto-detects which one from the code):
   Default   same-machine loopback spike (code: local-...).
   --host    direct TLS-PSK transport for hosts that can reach each other, e.g.
             a server's static IP (code: ef1_...). Encrypted end-to-end, one-shot.
-            --host is the address the receiver dials; --bind is the local
-            interface to listen on (default 0.0.0.0).
+  --relay   TLS-PSK through a blind relay for peers that can't reach each other
+            (both behind NAT). Both dial out to the relay; it forwards ciphertext
+            only and holds no key (code: efr1_...). With no value, --relay uses
+            the ENVFERRY_RELAY environment variable. Bracket IPv6: [2001:db8::1]:8787.
+
+Run your own relay with 'envferry relay --port <port>' on a box both peers can
+reach (e.g. your static-IP server). See docs/operating-a-relay.md.
 `;
 
 interface ParsedArgs {
@@ -71,6 +82,8 @@ export async function run(argv: string[]): Promise<number> {
       return runSend(rest);
     case "get":
       return runGet(rest);
+    case "relay":
+      return runRelay(rest);
     default:
       process.stderr.write(`Unknown command: ${command}\n\n${HELP}`);
       return 2;
@@ -117,7 +130,21 @@ async function runSend(args: string[]): Promise<number> {
     process.stdout.write("waiting for receiver...\n");
   };
 
-  if (flags.host) {
+  if (flags.relay) {
+    // --relay with no value falls back to ENVFERRY_RELAY, so the address can be
+    // configured once instead of hardcoded.
+    const relay = flags.relay === true ? process.env["ENVFERRY_RELAY"] : String(flags.relay);
+    if (!relay) {
+      process.stderr.write("--relay needs an address, or set ENVFERRY_RELAY\n");
+      return 2;
+    }
+    await offerViaRelay(payload, {
+      relay,
+      advertiseRelay:
+        typeof flags["relay-advertise"] === "string" ? flags["relay-advertise"] : undefined,
+      onCode,
+    });
+  } else if (flags.host) {
     await offerDirectTls(payload, {
       advertiseHost: String(flags.host),
       bindHost: typeof flags.bind === "string" ? flags.bind : "0.0.0.0",
@@ -139,8 +166,39 @@ async function runGet(args: string[]): Promise<number> {
     return 2;
   }
 
-  const payload = isDirectCode(code) ? await acceptDirectTls(code) : await acceptLocalTcp(code);
+  let payload: TransferPayload;
+  if (isRelayCode(code)) {
+    payload = await acceptViaRelay(code);
+  } else if (isDirectCode(code)) {
+    payload = await acceptDirectTls(code);
+  } else {
+    payload = await acceptLocalTcp(code);
+  }
   await writeReceivedFiles(payload);
+  return 0;
+}
+
+async function runRelay(args: string[]): Promise<number> {
+  const { flags } = parseFlags(args);
+  const seconds = (value: string | boolean | undefined): number | undefined =>
+    typeof value === "string" ? Number(value) * 1000 : undefined;
+  const count = (value: string | boolean | undefined): number | undefined =>
+    typeof value === "string" ? Number(value) : undefined;
+
+  const handle = await startRelay({
+    host: typeof flags.host === "string" ? flags.host : "0.0.0.0",
+    port: typeof flags.port === "string" ? Number(flags.port) : 0,
+    maxConnections: count(flags["max-connections"]),
+    maxPerIp: count(flags["max-per-ip"]),
+    pairTimeoutMs: seconds(flags["pair-timeout"]),
+    headerTimeoutMs: seconds(flags["header-timeout"]),
+  });
+
+  process.stdout.write(`relay listening on ${handle.host}:${handle.port}\n`);
+  process.stdout.write("forwarding encrypted transfers (ciphertext only) — Ctrl+C to stop\n");
+  await new Promise<never>(() => {
+    // Run until the process is signalled.
+  });
   return 0;
 }
 

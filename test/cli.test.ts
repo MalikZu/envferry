@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { startRelay } from "../src/index.js";
 
 // Tests drive the CLI as a real subprocess against the built artifact, so they
 // exercise exactly what ships and run from any working directory. The `pretest`
@@ -86,6 +87,53 @@ describe("envferry CLI", () => {
     assert.equal(await readFile(join(receiverDir, ".env"), "utf8"), "API_KEY=super-secret\n");
     assert.match(receiver.stdout, /wrote: \.env/);
     assert.doesNotMatch(senderOutput.stdout + receiver.stdout, /super-secret/);
+  });
+
+  it("sends via a relay using the ENVFERRY_RELAY env var", { timeout: 20000 }, async () => {
+    if (!(await canOpenLocalListener())) {
+      return;
+    }
+
+    // The relay runs in this test process, so both peers must be async
+    // subprocesses — a blocking spawnSync here would freeze the event loop and
+    // the relay could never accept the connection.
+    const relay = await startRelay({ host: "127.0.0.1", port: 0 });
+    try {
+      const root = await mkdtemp(join(tmpdir(), "envferry-relay-cli-"));
+      const senderDir = join(root, "sender");
+      const receiverDir = join(root, "receiver");
+      await mkdir(senderDir);
+      await mkdir(receiverDir);
+      await writeFile(join(senderDir, ".env"), "API_KEY=super-secret\n");
+
+      const relayEnv = { ...process.env, ENVFERRY_RELAY: `127.0.0.1:${relay.port}` };
+      const sender = spawn(process.execPath, [...RUNNER, "send", ".env", "--relay"], {
+        cwd: senderDir,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: relayEnv,
+      });
+      const senderExit = waitForExit(sender);
+      const senderOutput = collectOutput(sender);
+      const code = await waitForStdout(sender, senderOutput, /code: (efr1_[A-Za-z0-9_-]+)/);
+
+      const receiver = spawn(process.execPath, [...RUNNER, "get", code], {
+        cwd: receiverDir,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const receiverExit = waitForExit(receiver);
+      const receiverOutput = collectOutput(receiver);
+
+      const rexit = await receiverExit;
+      assert.equal(rexit.status, 0, receiverOutput.stderr);
+      const sexit = await senderExit;
+      assert.equal(sexit.status, 0, senderOutput.stderr);
+
+      assert.equal(await readFile(join(receiverDir, ".env"), "utf8"), "API_KEY=super-secret\n");
+      assert.match(receiverOutput.stdout, /wrote: \.env/);
+      assert.doesNotMatch(senderOutput.stdout + receiverOutput.stdout, /super-secret/);
+    } finally {
+      await relay.close();
+    }
   });
 
   it("previews env merges without printing secret values", async () => {
