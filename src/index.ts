@@ -4,3 +4,6 @@
 // the send/get commands. Exports are added as each module lands.
 export { parseEnv, serializeEnv } from "./env/parse.js";
 export type { BindingEntry, EnvBinding, EnvEntry, ParsedEnv, RawLineEntry } from "./env/parse.js";
+export { maskSecret } from "./env/mask.js";
+export { mergeEnv } from "./env/merge.js";
+export type { EnvChange, MergeResult } from "./env/merge.js";
