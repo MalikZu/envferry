@@ -23,6 +23,11 @@ const DEFAULT_PAIR_TIMEOUT_MS = 300_000;
 const DEFAULT_CONSUMED_TTL_MS = 600_000;
 const MAX_CONSUMED = 4096;
 const KEEPALIVE_MS = 30_000;
+// A transfer is a few MiB of TLS records at most (the payload itself is capped
+// at 1 MiB), so these bound what a paired session may pump through the relay —
+// otherwise a public relay is an unlimited free byte pipe.
+const DEFAULT_MAX_SESSION_BYTES = 16 * 1_048_576;
+const DEFAULT_MAX_SESSION_MS = 900_000; // 15 minutes
 
 export interface StartRelayOptions {
   host?: string;
@@ -36,6 +41,10 @@ export interface StartRelayOptions {
   maxWaiting?: number;
   maxPerIp?: number;
   maxConnections?: number;
+  /** Total bytes a paired session may forward (both directions combined). */
+  maxSessionBytes?: number;
+  /** Wall-clock lifetime of a paired session. */
+  maxSessionMs?: number;
 }
 
 export interface RelayHandle {
@@ -59,6 +68,8 @@ export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle
   const consumedTtlMs = options.consumedTtlMs ?? DEFAULT_CONSUMED_TTL_MS;
   const maxWaiting = options.maxWaiting ?? DEFAULT_MAX_WAITING;
   const maxPerIp = options.maxPerIp ?? DEFAULT_MAX_PER_IP;
+  const maxSessionBytes = options.maxSessionBytes ?? DEFAULT_MAX_SESSION_BYTES;
+  const maxSessionMs = options.maxSessionMs ?? DEFAULT_MAX_SESSION_MS;
 
   const waiting = new Map<string, WaitingPeer>();
   const sockets = new Set<Socket>();
@@ -161,7 +172,10 @@ export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle
         // A rendezvous id is single-use: once paired it cannot be paired again,
         // even if the end-to-end handshake later fails.
         markConsumed(id);
-        pair(partner.socket, partner.rest, socket, rest);
+        pair(partner.socket, partner.rest, socket, rest, {
+          maxSessionBytes,
+          maxSessionMs,
+        });
         return;
       }
 
@@ -217,7 +231,18 @@ export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle
   });
 }
 
-function pair(first: Socket, firstRest: Buffer, second: Socket, secondRest: Buffer): void {
+interface SessionLimits {
+  maxSessionBytes: number;
+  maxSessionMs: number;
+}
+
+function pair(
+  first: Socket,
+  firstRest: Buffer,
+  second: Socket,
+  secondRest: Buffer,
+  limits: SessionLimits
+): void {
   // Once paired, the relay never inspects payload again — it only forwards. TCP
   // keepalive detects a peer that dies without a clean FIN; a slow-but-alive
   // transfer is never killed by an inactivity timer, since keepalive resets on
@@ -226,12 +251,35 @@ function pair(first: Socket, firstRest: Buffer, second: Socket, secondRest: Buff
     socket.setKeepAlive(true, KEEPALIVE_MS);
   }
 
+  // Bound the session so a paired pipe cannot be used as an unlimited byte
+  // tunnel: cap total forwarded bytes (both directions) and wall-clock time.
+  // The relay counts lengths only — it still never interprets the bytes.
+  let forwarded = firstRest.length + secondRest.length;
+  const teardown = (): void => {
+    first.destroy();
+    second.destroy();
+  };
+  const countBytes = (chunk: Buffer): void => {
+    forwarded += chunk.length;
+    if (forwarded > limits.maxSessionBytes) {
+      teardown();
+    }
+  };
+  first.on("data", countBytes);
+  second.on("data", countBytes);
+
+  const sessionTimer = setTimeout(teardown, limits.maxSessionMs);
+  sessionTimer.unref?.();
+
   for (const [from, to] of [
     [first, second],
     [second, first],
   ] as const) {
     from.on("error", () => to.destroy());
-    from.once("close", () => to.end());
+    from.once("close", () => {
+      clearTimeout(sessionTimer);
+      to.end();
+    });
   }
 
   if (firstRest.length) {
