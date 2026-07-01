@@ -7,3 +7,9 @@ export type { BindingEntry, EnvBinding, EnvEntry, ParsedEnv, RawLineEntry } from
 export { maskSecret } from "./env/mask.js";
 export { mergeEnv } from "./env/merge.js";
 export type { EnvChange, MergeResult } from "./env/merge.js";
+export {
+  isEnvFileName,
+  normalizeReceivedFileName,
+  resolveReceiveTarget,
+} from "./files/receive-target.js";
+export type { ReceiveTargetOptions } from "./files/receive-target.js";
