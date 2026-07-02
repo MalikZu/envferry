@@ -24,7 +24,9 @@ end-to-end encrypted channel. See [README.md](README.md) for usage and
 ## Commands
 
 ```sh
-npm run check       # typecheck + build + test + smoke + pack — the gate CI runs
+make check          # preferred local/agent gate — same steps as CI, but pins a
+                    # writable npm cache so a root-owned ~/.npm can't fail the run
+npm run check       # typecheck + build + test + smoke + pack — the exact CI gate
 npm run typecheck   # tsc, no emit (src + tests)
 npm run build       # emit dist/
 npm test            # Node test runner via tsx (a pretest build produces dist/)

@@ -8,11 +8,14 @@ Node.js 20+. Then:
 
 ```sh
 npm install
-npm run check
+make check
 ```
 
-`npm run check` runs the type checker, the build, the unit tests, a CLI smoke
-check, and an `npm pack` dry run — the same gate CI enforces.
+`make check` runs the type checker, the build, the unit tests, a CLI smoke check,
+and an `npm pack` dry run — the same gate CI enforces, but with a project-local
+npm cache so a root-owned `~/.npm` (a common past-`sudo` accident) can't fail the
+run. `npm run check` does the identical steps if your npm cache is already
+writable (that's what CI uses).
 
 ## Project shape
 
