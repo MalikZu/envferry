@@ -6,7 +6,8 @@
 
 <p align="center">
   A tiny CLI that ferries <code>.env</code> files device-to-device (or to a teammate)
-  over an end-to-end encrypted channel — no uploads, no accounts, no secrets in Slack.
+  over an end-to-end encrypted channel — no plaintext on any server, no accounts,
+  no secrets in Slack.
   It understands env files instead of treating them as opaque blobs.
 </p>
 
