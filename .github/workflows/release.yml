@@ -29,7 +29,11 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      # Check out the exact tag being released, so a manual dispatch verifies and
+      # publishes that tag rather than whatever ref the workflow was run from.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       # Node 24 ships an npm new enough for trusted publishing (>= 11.5.1).
       - uses: actions/setup-node@v4
@@ -96,6 +100,8 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Render formula from the published tarball and push to the tap
         env:
