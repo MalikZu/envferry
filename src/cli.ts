@@ -21,6 +21,7 @@ Usage:
   envferry relay [--host <address>] [--port <port>]
                  [--max-connections <n>] [--max-per-ip <n>]
                  [--pair-timeout <seconds>] [--header-timeout <seconds>]
+                 [--max-session-bytes <n>] [--max-session-seconds <seconds>]
   envferry config <get|set|unset|path> [relay] [<host:port>]
   envferry merge-preview <existing> <incoming>
 
@@ -263,6 +264,8 @@ async function runRelay(args: string[]): Promise<number> {
     maxPerIp: countFlag(flags, "max-per-ip"),
     pairTimeoutMs: secondsFlag(flags, "pair-timeout"),
     headerTimeoutMs: secondsFlag(flags, "header-timeout"),
+    maxSessionBytes: countFlag(flags, "max-session-bytes"),
+    maxSessionMs: secondsFlag(flags, "max-session-seconds"),
   });
 
   process.stdout.write(`relay listening on ${handle.host}:${handle.port}\n`);

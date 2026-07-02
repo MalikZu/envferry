@@ -30,6 +30,11 @@ end-to-end encrypted, so you just expose a plain TCP port.
 | `--max-per-ip <n>` | `32` | Cap on concurrent connections from one IP. |
 | `--pair-timeout <seconds>` | `300` | How long a waiting peer is held before it is dropped. |
 | `--header-timeout <seconds>` | `30` | Deadline for a peer to announce its rendezvous id (slowloris defense). |
+| `--max-session-bytes <n>` | `16777216` | Total bytes a paired session may forward before it is cut. |
+| `--max-session-seconds <seconds>` | `900` | Wall-clock lifetime of a paired session. |
+
+Public operators may want tighter session caps, e.g.
+`envferry relay --port 8787 --max-per-ip 8 --max-session-bytes 4194304 --max-session-seconds 120`.
 
 ## Point clients at it
 

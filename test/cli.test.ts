@@ -215,6 +215,10 @@ describe("envferry CLI", () => {
     result = run("relay", "--max-per-ip", "-3");
     assert.equal(result.status, 2);
     assert.match(result.stderr, /--max-per-ip must be a positive integer/);
+
+    result = run("relay", "--max-session-bytes", "0");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--max-session-bytes must be a positive integer/);
   });
 
   it("previews env merges without printing secret values", async () => {
