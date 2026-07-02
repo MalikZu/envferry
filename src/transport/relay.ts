@@ -307,7 +307,10 @@ export function isRelayAddress(value: unknown): boolean {
 export function parseRelayAddress(value: unknown): RelayAddress | null {
   if (value !== null && typeof value === "object") {
     const record = value as { host?: unknown; port?: unknown };
-    return validated(String(record.host), Number(record.port));
+    if (typeof record.host !== "string" || typeof record.port !== "number") {
+      return null;
+    }
+    return validated(record.host, record.port);
   }
 
   const text = String(value).trim();

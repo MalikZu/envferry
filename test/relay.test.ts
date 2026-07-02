@@ -172,6 +172,11 @@ describe("blind relay transport", () => {
     assert.deepEqual(parseRelayAddress("[2001:db8::1]:443"), { host: "2001:db8::1", port: 443 });
     assert.deepEqual(parseRelayAddress({ host: "h", port: 1 }), { host: "h", port: 1 });
 
+    // Malformed object input must be rejected, not coerced to host "undefined".
+    assert.equal(parseRelayAddress({ port: 1 }), null);
+    assert.equal(parseRelayAddress({ host: "h" }), null);
+    assert.equal(parseRelayAddress({ host: 5, port: 1 }), null);
+
     // Bare IPv6 is ambiguous (host vs port) — reject rather than silently mangle.
     assert.equal(parseRelayAddress("2001:db8::1"), null);
     assert.equal(parseRelayAddress("2001:db8::1:9000"), null);
