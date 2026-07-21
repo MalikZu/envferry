@@ -204,6 +204,21 @@ describe("envferry CLI", () => {
     assert.equal(result.status, 2);
     assert.match(result.stderr, /--host requires a value/);
 
+    // The classic mix-up: a relay's host:port passed to --host. Catch it up
+    // front and point at --relay instead of minting an unconnectable code.
+    result = run("send", ".env", "--host", "203.0.113.10:8787");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--relay 203\.0\.113\.10:8787/);
+
+    // --receivers only makes sense with a cross-machine transport.
+    result = run("send", ".env", "--receivers", "3");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--receivers needs a cross-machine transport/);
+
+    result = run("send", ".env", "--host", "127.0.0.1", "--receivers", "999");
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /--receivers is capped at 64/);
+
     result = run("send", ".env", "--host", "127.0.0.1", "--timeout", "abc");
     assert.equal(result.status, 2);
     assert.match(result.stderr, /--timeout must be a positive number of seconds/);
