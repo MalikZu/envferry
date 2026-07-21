@@ -23,6 +23,11 @@ export const MAX_PAYLOAD_BYTES = 1_048_576; // 1 MiB of file contents total
 // above MAX_PAYLOAD_BYTES; anything larger is hostile and the read is aborted.
 export const MAX_MESSAGE_BYTES = 8 * 1_048_576;
 
+// Cap on how many receivers one send may serve (--receivers). High enough for
+// "the whole team", low enough that a leaked multi-use code cannot be redeemed
+// unbounded times within its window.
+export const MAX_RECEIVERS = 64;
+
 /**
  * Validate a payload decoded from an untrusted peer before acting on it. Throws
  * on anything that is not `{ files: [{ name: string, contents: string }, ...] }`

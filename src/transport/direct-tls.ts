@@ -2,7 +2,7 @@ import { connect, createServer } from "node:tls";
 import type { TlsOptions } from "node:tls";
 import { randomBytes } from "node:crypto";
 import { CIPHERS, IDENTITY } from "./psk.js";
-import { MAX_MESSAGE_BYTES, validatePayload } from "./payload.js";
+import { MAX_MESSAGE_BYTES, MAX_RECEIVERS, validatePayload } from "./payload.js";
 import type { TransferPayload } from "./payload.js";
 
 // Direct, encrypted transport for hosts that can reach each other directly (e.g.
@@ -29,9 +29,13 @@ export interface OfferDirectOptions {
   advertiseHost: string;
   /** Local interface to listen on. Defaults to 0.0.0.0. */
   bindHost?: string;
-  /** How long to wait for a receiver before giving up. Defaults to 5 minutes. */
+  /** How long to wait for receivers before giving up. Defaults to 5 minutes. */
   timeoutMs?: number;
+  /** How many receivers may redeem this code before the offer closes (default 1). */
+  receivers?: number;
   onCode?: (code: string) => void;
+  /** Called after each receiver has been served (multi-receiver progress). */
+  onDelivery?: (delivered: number, total: number) => void;
 }
 
 export function isDirectCode(code: string): boolean {
@@ -48,12 +52,18 @@ export async function offerDirectTls(
     throw new Error("Direct transport requires a reachable host (pass --host).");
   }
 
+  const total = options.receivers ?? 1;
+  if (!Number.isInteger(total) || total < 1 || total > MAX_RECEIVERS) {
+    throw new Error(`receivers must be an integer between 1 and ${MAX_RECEIVERS}.`);
+  }
+
   const psk = randomBytes(16);
   const bindHost = options.bindHost ?? "0.0.0.0";
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return new Promise((resolvePromise, reject) => {
     let settled = false;
+    let delivered = 0;
     let timer: NodeJS.Timeout | undefined;
 
     const serverOptions: PskTlsOptions = {
@@ -65,9 +75,16 @@ export async function offerDirectTls(
 
     const server = createServer(serverOptions, (socket) => {
       // The connection callback fires only after a successful PSK handshake, so
-      // the peer is already proven to hold the code. Hand over the payload.
+      // the peer is already proven to hold the code. Hand over the payload, and
+      // keep listening until every allowed receiver has been served.
       socket.on("error", () => {});
-      socket.end(JSON.stringify({ payload }) + "\n", closeSuccessfully);
+      socket.end(JSON.stringify({ payload }) + "\n", () => {
+        delivered += 1;
+        options.onDelivery?.(delivered, total);
+        if (delivered >= total) {
+          closeSuccessfully();
+        }
+      });
     });
 
     // A failed handshake (wrong code, or a port scanner speaking non-TLS) is
@@ -84,7 +101,13 @@ export async function offerDirectTls(
       }
 
       timer = setTimeout(() => {
-        closeWithError(new Error("Timed out waiting for a receiver."));
+        closeWithError(
+          new Error(
+            delivered > 0
+              ? `Timed out after serving ${delivered} of ${total} receivers.`
+              : "Timed out waiting for a receiver."
+          )
+        );
       }, timeoutMs);
       timer.unref?.();
 

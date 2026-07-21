@@ -126,6 +126,62 @@ describe("blind relay transport", () => {
     }
   });
 
+  it("re-pairs a multi-use id and serves several receivers from one offer", async (t) => {
+    if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
+      return;
+    }
+
+    const relay = await startRelay({ host: "127.0.0.1", port: 0 });
+    try {
+      const payload: TransferPayload = {
+        files: [{ name: ".env", contents: "API_KEY=super-secret\n" }],
+      };
+
+      let resolveCode!: (code: string) => void;
+      const codePromise = new Promise<string>((resolve) => {
+        resolveCode = resolve;
+      });
+      const done = offerViaRelay(payload, {
+        relay: `127.0.0.1:${relay.port}`,
+        receivers: 2,
+        onCode: resolveCode,
+      });
+      const code = await codePromise;
+
+      // Two sequential receivers redeem the same efr1_ code.
+      const first = await acceptViaRelay(code);
+      assert.deepEqual(first, payload);
+      const second = await acceptViaRelay(code);
+      assert.deepEqual(second, payload);
+
+      await done;
+    } finally {
+      await relay.close();
+    }
+  });
+
+  it("rejects a malformed rendezvous header flag", async (t) => {
+    if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
+      return;
+    }
+
+    const relay = await startRelay({ host: "127.0.0.1", port: 0 });
+    try {
+      // Only `<id>` and `<id> m` are valid header lines; anything else is dropped.
+      const socket = connect(relay.port, "127.0.0.1");
+      await once(socket, "connect");
+      socket.write(Buffer.from("deadbeefdeadbeef x\n"));
+      await Promise.race([
+        once(socket, "close"),
+        rejectAfter(3000, "relay did not drop a malformed header flag"),
+      ]);
+    } finally {
+      await relay.close();
+    }
+  });
+
   it("tears down a paired session that exceeds the byte cap", async (t) => {
     if (!(await canOpenLocalListener())) {
       t.skip("local listeners are blocked in this sandbox");

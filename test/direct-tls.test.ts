@@ -66,6 +66,49 @@ describe("direct TLS-PSK transport", () => {
     await assert.rejects(() => acceptDirectTls("ef1_not-valid-base64url"), /Malformed direct transfer code/);
     await assert.rejects(() => acceptDirectTls("local-1234-deadbeef"), /Unsupported transfer code/);
   });
+
+  it("serves multiple receivers from one offer with receivers > 1", async (t) => {
+    if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
+      return;
+    }
+
+    const payload: TransferPayload = {
+      files: [{ name: ".env", contents: "API_KEY=super-secret\n" }],
+    };
+    const served: number[] = [];
+
+    let resolveCode!: (code: string) => void;
+    const codePromise = new Promise<string>((resolve) => {
+      resolveCode = resolve;
+    });
+    const done = offerDirectTls(payload, {
+      advertiseHost: "127.0.0.1",
+      bindHost: "127.0.0.1",
+      receivers: 2,
+      onCode: resolveCode,
+      onDelivery: (delivered) => served.push(delivered),
+    });
+    const code = await codePromise;
+
+    // The same ef1_ code is redeemable until the receiver count is reached.
+    assert.deepEqual(await acceptDirectTls(code), payload);
+    assert.deepEqual(await acceptDirectTls(code), payload);
+    await done;
+    assert.deepEqual(served, [1, 2]);
+  });
+
+  it("rejects an out-of-range receivers count", async () => {
+    const payload: TransferPayload = { files: [] };
+    await assert.rejects(
+      () => offerDirectTls(payload, { advertiseHost: "127.0.0.1", receivers: 0 }),
+      /receivers must be/
+    );
+    await assert.rejects(
+      () => offerDirectTls(payload, { advertiseHost: "127.0.0.1", receivers: 65 }),
+      /receivers must be/
+    );
+  });
 });
 
 async function startOffer(payload: TransferPayload): Promise<{ done: Promise<void>; code: string }> {

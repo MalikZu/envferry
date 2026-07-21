@@ -12,6 +12,11 @@ import type { Socket } from "node:net";
 // (slowloris), a bounded waiting set, and single-use rendezvous ids. It cannot
 // authenticate the code (that is the point — it stays blind), so operators of a
 // public relay should still firewall/rate-limit it upstream.
+//
+// Header line: `<id>\n` for a single-use rendezvous, or `<id> m\n` when the
+// peer intends to pair the id repeatedly (a multi-receiver send). Pairing marks
+// the id consumed only when neither peer flagged multi-use, so the single-use
+// hardening stays the default and is relaxed only by explicit opt-in.
 
 const ID_PATTERN = /^[a-f0-9]{8,64}$/;
 const MAX_HEADER_BYTES = 256;
@@ -58,6 +63,8 @@ interface WaitingPeer {
   /** Bytes received after the id line, to flush to the partner once paired. */
   rest: Buffer;
   pairTimer: NodeJS.Timeout;
+  /** Whether this peer flagged the id as multi-use (`<id> m` header). */
+  multi: boolean;
 }
 
 export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle> {
@@ -157,10 +164,18 @@ export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle
       routed = true;
       clearTimeout(giveUp);
 
-      const id = header.subarray(0, newline).toString("utf8").trim();
+      const line = header.subarray(0, newline).toString("utf8").trim();
       const rest = header.subarray(newline + 1);
 
-      if (!ID_PATTERN.test(id) || isConsumed(id)) {
+      // `<id>` or `<id> m`; any other trailing token is malformed.
+      const [id = "", flag, ...extra] = line.split(/\s+/);
+      const multi = flag === "m";
+      if (
+        !ID_PATTERN.test(id) ||
+        (flag !== undefined && flag !== "m") ||
+        extra.length > 0 ||
+        isConsumed(id)
+      ) {
         socket.destroy();
         return;
       }
@@ -169,9 +184,13 @@ export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle
       if (partner) {
         waiting.delete(id);
         clearTimeout(partner.pairTimer);
-        // A rendezvous id is single-use: once paired it cannot be paired again,
-        // even if the end-to-end handshake later fails.
-        markConsumed(id);
+        // A rendezvous id is single-use by default: once paired it cannot be
+        // paired again, even if the end-to-end handshake later fails. A peer
+        // that flagged multi-use opts out so a multi-receiver send can re-pair
+        // the same id for each receiver.
+        if (!partner.multi && !multi) {
+          markConsumed(id);
+        }
         pair(partner.socket, partner.rest, socket, rest, {
           maxSessionBytes,
           maxSessionMs,
@@ -196,7 +215,7 @@ export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle
           waiting.delete(id);
         }
       });
-      waiting.set(id, { socket, rest, pairTimer });
+      waiting.set(id, { socket, rest, pairTimer, multi });
     };
 
     socket.on("data", onData);
