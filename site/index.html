@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>envferry — move .env files between machines without pasting secrets into chat</title>
+  <meta name="description" content="envferry is a zero-dependency CLI that ferries .env files device-to-device over an end-to-end encrypted channel (TLS-PSK, forward secret). No plaintext on any server, no accounts, no secrets in Slack.">
+  <meta name="keywords" content="env file transfer, dotenv, share .env securely, send env file, secrets, CLI, TLS-PSK, end-to-end encryption, npx envferry">
+  <link rel="canonical" href="https://malikzu.github.io/envferry/">
+  <meta name="theme-color" content="#0b1020">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9B%B4%3C/text%3E%3C/svg%3E">
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="envferry — move .env files between machines, encrypted end-to-end">
+  <meta property="og:description" content="A tiny zero-dependency CLI: envferry send .env → share a code → envferry get. TLS-PSK, forward secret, no plaintext on any server.">
+  <meta property="og:url" content="https://malikzu.github.io/envferry/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="envferry — move .env files between machines, encrypted end-to-end">
+  <meta name="twitter:description" content="A tiny zero-dependency CLI: envferry send .env → share a code → envferry get. No plaintext on any server.">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "envferry",
+    "operatingSystem": "macOS, Linux, Windows",
+    "applicationCategory": "DeveloperApplication",
+    "description": "Zero-dependency CLI that moves .env files between machines over an end-to-end encrypted channel (TLS-PSK, forward secret).",
+    "url": "https://malikzu.github.io/envferry/",
+    "downloadUrl": "https://www.npmjs.com/package/envferry",
+    "license": "https://github.com/MalikZu/envferry/blob/main/LICENSE",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #16181d; --muted: #5b6472; --line: #e6e8ee;
+      --card: #f6f7fa; --accent: #0d7bd6; --accent-fg: #ffffff;
+      --code-bg: #0b1020; --code-fg: #d6e4ff; --code-accent: #7ab8ff;
+      --good: #1a7f4b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b1020; --fg: #e8ecf4; --muted: #98a2b3; --line: #232a3d;
+        --card: #121830; --accent: #58a6ff; --accent-fg: #0b1020;
+        --code-bg: #080d1a; --code-fg: #d6e4ff; --code-accent: #7ab8ff;
+        --good: #4cc38a;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      background: var(--bg); color: var(--fg);
+      font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 880px; margin: 0 auto; padding: 0 24px 80px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre { font: 0.92em/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+    header.hero { text-align: center; padding: 88px 0 40px; }
+    .hero h1 { font-size: 3rem; letter-spacing: -0.03em; }
+    .hero h1 .ferry { margin-right: 12px; }
+    .hero p.tag { font-size: 1.25rem; color: var(--muted); max-width: 620px; margin: 14px auto 0; }
+    .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+    .badges span {
+      font-size: .8rem; padding: 4px 12px; border: 1px solid var(--line);
+      border-radius: 999px; color: var(--muted); background: var(--card);
+    }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 28px; }
+    .cta a {
+      display: inline-block; padding: 10px 22px; border-radius: 10px; font-weight: 600;
+    }
+    .cta a.primary { background: var(--accent); color: var(--accent-fg); }
+    .cta a.secondary { border: 1px solid var(--line); color: var(--fg); }
+    .cta a:hover { text-decoration: none; filter: brightness(1.08); }
+
+    .terminal {
+      background: var(--code-bg); color: var(--code-fg); border-radius: 14px;
+      padding: 22px 24px; margin: 40px auto 0; max-width: 640px; text-align: left;
+      overflow-x: auto; box-shadow: 0 18px 50px rgba(0,0,0,.25);
+    }
+    .terminal pre { white-space: pre; }
+    .terminal .c { color: #6b7a99; }
+    .terminal .a { color: var(--code-accent); }
+    .terminal .g { color: #4cc38a; }
+
+    section { margin-top: 72px; }
+    section > h2 { font-size: 1.6rem; letter-spacing: -0.02em; margin-bottom: 18px; }
+    .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+    }
+    .card h3 { font-size: 1.05rem; margin-bottom: 8px; }
+    .card p { color: var(--muted); font-size: .95rem; }
+    .card code.chip {
+      display: inline-block; background: var(--code-bg); color: var(--code-accent);
+      border-radius: 6px; padding: 1px 8px; font-size: .85em;
+    }
+
+    pre.block {
+      background: var(--code-bg); color: var(--code-fg); border-radius: 12px;
+      padding: 16px 20px; overflow-x: auto; margin-top: 12px;
+    }
+    .install-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .install-grid .card pre { background: none; color: var(--fg); padding: 0; margin-top: 6px; overflow-x: auto; }
+
+    ul.sec { list-style: none; display: grid; gap: 10px; }
+    ul.sec li { padding-left: 28px; position: relative; color: var(--muted); }
+    ul.sec li::before { content: "✓"; position: absolute; left: 4px; color: var(--good); font-weight: 700; }
+    ul.sec li strong { color: var(--fg); }
+
+    footer {
+      margin-top: 88px; padding-top: 24px; border-top: 1px solid var(--line);
+      color: var(--muted); font-size: .9rem; display: flex; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px;
+    }
+    @media (max-width: 560px) { .hero h1 { font-size: 2.2rem; } }
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <h1><span class="ferry">⛴</span>envferry</h1>
+    <p class="tag">Move <code>.env</code> files between machines without pasting secrets into chat.</p>
+    <div class="badges">
+      <span>End-to-end encrypted</span>
+      <span>Zero runtime dependencies</span>
+      <span>MIT licensed</span>
+      <span>Node 20+</span>
+    </div>
+    <div class="cta">
+      <a class="primary" href="https://github.com/MalikZu/envferry">View on GitHub</a>
+      <a class="secondary" href="https://www.npmjs.com/package/envferry">npm package</a>
+    </div>
+
+    <div class="terminal" aria-label="Terminal example">
+<pre><span class="c"># on the machine that has the file</span>
+<span class="a">$</span> npx envferry send .env --relay your-relay.example:8787
+code: <span class="g">efr1_9k2…</span>   <span class="c"># share this code out-of-band</span>
+
+<span class="c"># on the machine that needs it</span>
+<span class="a">$</span> npx envferry get efr1_9k2…
+<span class="g">wrote: .env</span></pre>
+    </div>
+  </header>
+
+  <section id="why">
+    <h2>Why</h2>
+    <p style="color: var(--muted); max-width: 700px;">
+      You need a <code>.env</code> on another machine — your other laptop, a server, a
+      teammate. The lazy options all leak: paste it into Slack, email it, drop it in a
+      shared doc. envferry moves it over an end-to-end encrypted channel instead, and
+      because it understands env files it lands them safely on the other side —
+      auto-named, path-traversal safe, never clobbering what's already there.
+    </p>
+  </section>
+
+  <section id="transports">
+    <h2>Three transports, one <code>get</code></h2>
+    <div class="cols">
+      <div class="card">
+        <h3>Relay <code class="chip">efr1_…</code></h3>
+        <p>The usual choice. Both peers dial out to a <strong>blind relay</strong> that
+        pipes ciphertext only — it holds no key and cannot read a byte. Works when both
+        machines are behind NAT. Self-host one with <code>envferry relay</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Direct <code class="chip">ef1_…</code></h3>
+        <p>No relay involved: the receiver dials the sender directly. Use when the
+        <em>sending</em> machine is reachable (static IP, LAN, VPN) —
+        <code>--host</code> is that machine's own address.</p>
+      </div>
+      <div class="card">
+        <h3>Loopback <code class="chip">local-…</code></h3>
+        <p>Same machine, two shells — handy for moving a file between checkouts or
+        users without cat-and-paste.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3>Send to the whole team</h3>
+      <p><code>envferry send .env --relay --receivers 5</code> keeps one code redeemable
+      until five teammates have fetched it — one command, one code, everyone onboarded.</p>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <div class="install-grid">
+      <div class="card"><h3>npx (no install)</h3><pre>npx envferry --help</pre></div>
+      <div class="card"><h3>npm</h3><pre>npm install -g envferry</pre></div>
+      <div class="card"><h3>Homebrew</h3><pre>brew install MalikZu/tap/envferry</pre></div>
+    </div>
+  </section>
+
+  <section id="security">
+    <h2>Security, honestly stated</h2>
+    <ul class="sec">
+      <li><strong>End-to-end encrypted</strong> with <code>ECDHE-PSK-CHACHA20-POLY1305</code> —
+        AEAD with forward secrecy. The transfer code carries a one-time key; a wrong code
+        fails the handshake and learns nothing.</li>
+      <li><strong>No plaintext on any server.</strong> Direct transfers are peer-to-peer; the
+        relay is a blind byte pump that holds no key — even its operator can't read your secrets.</li>
+      <li><strong>No invented crypto.</strong> envferry wraps Node's built-in TLS (OpenSSL) and
+        ships with <strong>zero runtime dependencies</strong>, keeping the supply-chain surface minimal.</li>
+      <li><strong>The code is the capability.</strong> Anyone holding it can receive the file —
+        share it over a channel you trust, use it promptly.
+        <a href="https://github.com/MalikZu/envferry/blob/main/docs/threat-model.md">Read the full threat model</a>.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>MIT © 2026 Malik AlZubaidi</span>
+    <span>
+      <a href="https://github.com/MalikZu/envferry">GitHub</a> ·
+      <a href="https://www.npmjs.com/package/envferry">npm</a> ·
+      <a href="https://github.com/MalikZu/envferry/blob/main/docs/operating-a-relay.md">Run a relay</a> ·
+      <a href="https://github.com/MalikZu/envferry/blob/main/SECURITY.md">Security policy</a>
+    </span>
+  </footer>
+</main>
+</body>
+</html>
