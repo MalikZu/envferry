@@ -31,11 +31,11 @@ understands env files it lands them safely on the other side.
 
 ```sh
 # on the machine that has the file
-envferry send .env --host your-server.example
-#   → code: ef1_… (share this out-of-band)
+envferry send .env --relay your-relay.example:8787
+#   → code: efr1_… (share this out-of-band)
 
 # on the machine that needs it
-envferry get ef1_…
+envferry get efr1_…
 #   → wrote: .env
 ```
 
@@ -46,7 +46,7 @@ key lives inside the code, and no server ever sees your secrets in the clear.
 
 ```sh
 # one-off, no install
-npx envferry send .env --host your-server.example
+npx envferry send .env --relay your-relay.example:8787
 
 # global CLI
 npm install -g envferry
@@ -65,13 +65,19 @@ Pick the transport by reachability — `get` auto-detects which one from the cod
 
 | Situation | Command | Code |
 |---|---|---|
+| The usual case: any two machines, NAT or not | `envferry send .env --relay <relay-addr>` | `efr1_…` |
+| The **sending** machine is directly reachable (static IP, LAN, VPN) | `envferry send .env --host <its-own-addr>` | `ef1_…` |
 | Same machine (two shells) | `envferry send .env` | `local-…` |
-| One side is reachable (static IP, LAN, VPN) | `envferry send .env --host <addr>` | `ef1_…` |
-| Neither side is reachable (both behind NAT) | run a relay, then `envferry send .env --relay <addr>` | `efr1_…` |
 
-Whoever runs `send` is the one that must be reachable at `--host`. To push a file
-*up* to a reachable server, run `send` on the server and `get` on your laptop; or
-use a relay. See [docs/operating-a-relay.md](docs/operating-a-relay.md) to run one.
+> **`--host` is not where the relay lives.** `--host` means "other machines can
+> reach *this* machine at this address" — the receiver dials the *sender*
+> directly, no relay involved, and the port is picked automatically. If you have
+> a relay address (`host:port`), the flag you want is `--relay`. The CLI now
+> rejects `--host host:port` with exactly this hint.
+
+See [docs/operating-a-relay.md](docs/operating-a-relay.md) to run your own relay
+(a few seconds of setup, no TLS certificates needed — transfers are already
+end-to-end encrypted).
 
 Set a relay once and drop the address from then on (accepts a DNS name or an IP):
 
@@ -84,6 +90,21 @@ envferry send .env --relay        # uses the configured relay
 # receive it (any code type)
 envferry get <code>
 ```
+
+### Send to the whole team
+
+One send can serve several receivers — the code stays redeemable until everyone
+has it (or the timeout hits):
+
+```sh
+envferry send .env --relay --receivers 5
+#   → code: efr1_… — share it with the team; up to 5 gets succeed
+```
+
+Works with `--relay` (needs a relay running envferry ≥ 0.2.0) and `--host`.
+Capped at 64. Note the tradeoff: a multi-receiver code is redeemable more than
+once by design, so the usual "use it promptly, share it over a channel you
+trust" advice matters even more.
 
 ## .env-aware, not a generic file mover
 

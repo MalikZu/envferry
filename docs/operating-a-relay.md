@@ -51,6 +51,17 @@ envferry send .env --relay
 The relay address is embedded in the `efr1_` code, so `get` needs no relay flag.
 For IPv6, bracket the address: `--relay [2001:db8::1]:8787`.
 
+A common mix-up: the relay address goes in `--relay`, never in `--host`. `--host`
+selects the *direct* transport and names the sender's own reachable address — the
+CLI rejects a `host:port` value there and points back here.
+
+## Multi-receiver sends
+
+`envferry send --relay --receivers <n>` serves one code to up to `n` receivers by
+re-pairing the same rendezvous id (the peer announces `<id> m` instead of `<id>`).
+Relays older than envferry 0.2.0 drop that header, so multi-receiver sends need
+the relay updated; single-receiver traffic is wire-compatible in both directions.
+
 If the sender runs *on* the relay host, dial it locally but advertise the public
 address so the receiver can reach it:
 

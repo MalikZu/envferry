@@ -31,7 +31,7 @@ trust, and use them promptly — they are one-shot and time-limited.
 | Transport | Code | Reach | Encryption | Notes |
 |---|---|---|---|---|
 | Loopback | `local-…` | Same machine only | **None** | Proves the send/get lifecycle; binds `127.0.0.1`. Not for cross-device use. |
-| Direct | `ef1_…` | One peer reachable | TLS-PSK, forward secret | Sender binds a listener; one-shot; 5-minute timeout. |
+| Direct | `ef1_…` | One peer reachable | TLS-PSK, forward secret | Sender binds a listener; one-shot by default; 5-minute timeout. |
 | Relay | `efr1_…` | Neither peer reachable | TLS-PSK, forward secret | Both peers dial a blind relay that pipes ciphertext. |
 
 ### Direct transport
@@ -39,8 +39,8 @@ trust, and use them promptly — they are one-shot and time-limited.
 The sender binds a TLS-PSK listener and advertises its host in the code. A wrong
 code fails the handshake and is ignored — a 128-bit key makes online guessing
 infeasible — so a bad attempt does not cancel the pending transfer. The listener
-is single-use and opens a port for the transfer window, so prefer a host you can
-firewall to the peer, or tunnel over SSH.
+is single-use by default and opens a port for the transfer window, so prefer a
+host you can firewall to the peer, or tunnel over SSH.
 
 ### Blind relay
 
@@ -52,7 +52,7 @@ end-to-end *through* the pipe, so:
   payload, even as the operator. (A test asserts it forwards raw bytes unchanged.)
 - A wrong key still pairs but fails the end-to-end handshake, so a mispaired or
   malicious peer learns nothing.
-- Rendezvous ids are **single-use**; a used id is not paired again.
+- Rendezvous ids are **single-use by default**; a used id is not paired again.
 - Availability defenses: a global connection cap, a per-IP cap, a short header
   deadline (slowloris), a bounded waiting set, and TCP keepalive that reaps dead
   peers without killing a slow-but-live transfer.
@@ -60,6 +60,25 @@ end-to-end *through* the pipe, so:
 Because the relay cannot authenticate the code (that is what keeps it blind), a
 public relay is an unauthenticated service — firewall or rate-limit it upstream.
 See [operating-a-relay.md](operating-a-relay.md).
+
+### Multi-receiver sends (`--receivers <n>`)
+
+`--receivers` deliberately relaxes the one-shot property: the code stays
+redeemable until `n` receivers are served or the send times out. What changes
+and what does not:
+
+- **Confidentiality is unchanged** — every receiver still authenticates by the
+  PSK; a wrong code still fails the handshake and learns nothing.
+- **Replay hardening is relaxed by opt-in only.** Single-receiver sends keep
+  single-use codes/ids on the wire, byte-for-byte as before. With `--receivers`,
+  anyone who obtains the code inside the window can redeem one of the `n` slots —
+  the code was always the capability; multi-receiver widens *how many times* it
+  can be exercised, not *who* can exercise it (still: anyone holding it).
+- The count is capped (64) and the session has a deadline, so a leaked
+  multi-use code cannot be redeemed unbounded times.
+
+Share multi-receiver codes over a channel scoped to the intended group, and
+prefer the smallest `n` that does the job.
 
 ## What an attacker can and cannot do
 
