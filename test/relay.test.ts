@@ -161,6 +161,78 @@ describe("blind relay transport", () => {
     }
   });
 
+  it("buffers bytes a waiting peer sends before its partner arrives", async (t) => {
+    if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
+      return;
+    }
+
+    const relay = await startRelay({ host: "127.0.0.1", port: 0 });
+    try {
+      const id = "0123456789abcdef";
+      const opaque = Buffer.from("client-hello-sized bytes sent while waiting");
+
+      // Peer A announces, then sends more data in a LATER chunk while still
+      // unpaired — the exact shape of a TLS client waiting for its partner.
+      // A flowing socket with no data listener silently discards chunks, so
+      // this regression-tests the pause that keeps them buffered.
+      const a = connect(relay.port, "127.0.0.1");
+      await once(a, "connect");
+      a.write(Buffer.from(id + "\n"));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      a.write(opaque);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const b = connect(relay.port, "127.0.0.1");
+      await once(b, "connect");
+      b.write(Buffer.from(id + "\n"));
+
+      const seen = await Promise.race([
+        readExactly(b, opaque.length),
+        rejectAfter(3000, "relay dropped bytes sent by a waiting peer"),
+      ]);
+      assert.deepEqual(seen, opaque);
+      a.destroy();
+      b.destroy();
+    } finally {
+      await relay.close();
+    }
+  });
+
+  it("serves concurrent receivers racing a multi-receiver offer", { timeout: 20000 }, async (t) => {
+    if (!(await canOpenLocalListener())) {
+      t.skip("local listeners are blocked in this sandbox");
+      return;
+    }
+
+    const relay = await startRelay({ host: "127.0.0.1", port: 0 });
+    try {
+      const payload: TransferPayload = {
+        files: [{ name: ".env", contents: "API_KEY=super-secret\n" }],
+      };
+      let resolveCode!: (code: string) => void;
+      const codePromise = new Promise<string>((resolve) => {
+        resolveCode = resolve;
+      });
+      const done = offerViaRelay(payload, {
+        relay: `127.0.0.1:${relay.port}`,
+        receivers: 2,
+        onCode: resolveCode,
+      });
+      const code = await codePromise;
+
+      // Both receivers connect at once, so one of them registers as the waiting
+      // peer while the sender is mid-re-offer — the race that deadlocked when
+      // the relay dropped the waiting receiver's handshake bytes.
+      const [first, second] = await Promise.all([acceptViaRelay(code), acceptViaRelay(code)]);
+      assert.deepEqual(first, payload);
+      assert.deepEqual(second, payload);
+      await done;
+    } finally {
+      await relay.close();
+    }
+  });
+
   it("rejects a malformed rendezvous header flag", async (t) => {
     if (!(await canOpenLocalListener())) {
       t.skip("local listeners are blocked in this sandbox");

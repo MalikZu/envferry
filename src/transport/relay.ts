@@ -203,6 +203,14 @@ export function startRelay(options: StartRelayOptions = {}): Promise<RelayHandle
         return;
       }
 
+      // While a peer waits for its partner, buffer — don't drop — anything else
+      // it sends. Removing the data listener does NOT leave flowing mode, and a
+      // flowing socket with no listener discards chunks. A waiting *receiver*
+      // sends its TLS ClientHello right after the header, so without this pause
+      // the handshake bytes evaporate and both peers deadlock after pairing.
+      // pair() resumes the socket, which flushes the buffered bytes in order.
+      socket.pause();
+
       const pairTimer = setTimeout(() => {
         if (waiting.get(id)?.socket === socket) {
           waiting.delete(id);
