@@ -1,6 +1,6 @@
 {
   "name": "envferry",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Move .env files between devices without pasting secrets into chat.",
   "type": "module",
   "bin": {
